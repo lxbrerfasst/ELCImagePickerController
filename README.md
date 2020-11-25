@@ -1,3 +1,5 @@
+# Changes taken from [ios-legacy](https://github.com/lxbrerfasst/ios-legacy/tree/master/Owncloud%20iOs%20Client/ExternalLibreries/ELCPickerLib)
+
 # ELCImagePickerController
 
 *A clone of the UIImagePickerController using the Assets Library Framework allowing for multiple asset selection.*
