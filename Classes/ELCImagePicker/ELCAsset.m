@@ -16,7 +16,7 @@
     return [NSString stringWithFormat:@"ELCAsset index:%d",self.index];
 }
 
-- (id)initWithAsset:(ALAsset*)asset
+- (id)initWithAsset:(NSObject*)asset
 {
 	self = [super init];
 	if (self) {

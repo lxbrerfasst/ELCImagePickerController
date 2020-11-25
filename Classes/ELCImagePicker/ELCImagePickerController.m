@@ -14,6 +14,7 @@
 #import <CoreLocation/CoreLocation.h>
 #import <MobileCoreServices/UTCoreTypes.h>
 #import "ELCConsole.h"
+#import <Photos/Photos.h>
 
 @implementation ELCImagePickerController
 
@@ -36,7 +37,6 @@
 
 - (id)initWithRootViewController:(UIViewController *)rootViewController
 {
-
     self = [super initWithRootViewController:rootViewController];
     if (self) {
         self.maximumImagesCount = 4;
@@ -69,17 +69,7 @@
 
 - (BOOL)shouldSelectAsset:(ELCAsset *)asset previousCount:(NSUInteger)previousCount
 {
-    BOOL shouldSelect = previousCount < self.maximumImagesCount;
-    if (!shouldSelect) {
-        NSString *title = [NSString stringWithFormat:NSLocalizedString(@"Only %d photos please!", nil), self.maximumImagesCount];
-        NSString *message = [NSString stringWithFormat:NSLocalizedString(@"You can only send %d photos at a time.", nil), self.maximumImagesCount];
-        [[[UIAlertView alloc] initWithTitle:title
-                                    message:message
-                                   delegate:nil
-                          cancelButtonTitle:nil
-                          otherButtonTitles:NSLocalizedString(@"Okay", nil), nil] show];
-    }
-    return shouldSelect;
+  return YES;
 }
 
 - (BOOL)shouldDeselectAsset:(ELCAsset *)asset previousCount:(NSUInteger)previousCount;
@@ -87,58 +77,36 @@
     return YES;
 }
 
+-(void) initThredInABackgroundThread:(NSMutableDictionary*)args{
+    [self performSelectorInBackground:@selector(initInOtherThread:) withObject:args];
+}
+
+-(void)initInOtherThread:(NSMutableDictionary*)args{
+    NSMutableArray *returnArray = [[NSMutableArray alloc] init];
+    
+    NSArray *_assets = [args objectForKey:@"assets"];
+    
+    for(ELCAsset *elcAsset in _assets) {
+        
+        PHAsset *asset = (PHAsset*) elcAsset.asset;
+        
+        [returnArray addObject:asset];
+        
+    }
+    
+    if([self.imagePickerDelegate respondsToSelector:@selector(elcImagePickerController:didFinishPickingMediaWithInfo:)]) {
+        [self.imagePickerDelegate elcImagePickerController:self didFinishPickingMediaWithInfo:[NSArray arrayWithArray:returnArray]];
+    }
+}
+
 - (void)selectedAssets:(NSArray *)assets
 {
-	NSMutableArray *returnArray = [[NSMutableArray alloc] init];
-	
-	for(ELCAsset *elcasset in assets) {
-        ALAsset *asset = elcasset.asset;
-		id obj = [asset valueForProperty:ALAssetPropertyType];
-		if (!obj) {
-			continue;
-		}
-		NSMutableDictionary *workingDictionary = [[NSMutableDictionary alloc] init];
-		
-		CLLocation* wgs84Location = [asset valueForProperty:ALAssetPropertyLocation];
-		if (wgs84Location) {
-			[workingDictionary setObject:wgs84Location forKey:ALAssetPropertyLocation];
-		}
-        
-        [workingDictionary setObject:obj forKey:UIImagePickerControllerMediaType];
-
-        //This method returns nil for assets from a shared photo stream that are not yet available locally. If the asset becomes available in the future, an ALAssetsLibraryChangedNotification notification is posted.
-        ALAssetRepresentation *assetRep = [asset defaultRepresentation];
-
-        if(assetRep != nil) {
-            if (_returnsImage) {
-                CGImageRef imgRef = nil;
-                //defaultRepresentation returns image as it appears in photo picker, rotated and sized,
-                //so use UIImageOrientationUp when creating our image below.
-                UIImageOrientation orientation = UIImageOrientationUp;
-            
-                if (_returnsOriginalImage) {
-                    imgRef = [assetRep fullResolutionImage];
-                    orientation = [assetRep orientation];
-                } else {
-                    imgRef = [assetRep fullScreenImage];
-                }
-                UIImage *img = [UIImage imageWithCGImage:imgRef
-                                                   scale:1.0f
-                                             orientation:orientation];
-                [workingDictionary setObject:img forKey:UIImagePickerControllerOriginalImage];
-            }
-
-            [workingDictionary setObject:[[asset valueForProperty:ALAssetPropertyURLs] valueForKey:[[[asset valueForProperty:ALAssetPropertyURLs] allKeys] objectAtIndex:0]] forKey:UIImagePickerControllerReferenceURL];
-            
-            [returnArray addObject:workingDictionary];
-        }
-		
-	}    
-	if (_imagePickerDelegate != nil && [_imagePickerDelegate respondsToSelector:@selector(elcImagePickerController:didFinishPickingMediaWithInfo:)]) {
-		[_imagePickerDelegate performSelector:@selector(elcImagePickerController:didFinishPickingMediaWithInfo:) withObject:self withObject:returnArray];
-	} else {
-        [self popToRootViewControllerAnimated:NO];
-    }
+    NSMutableDictionary *args = [[NSMutableDictionary alloc] init];
+    [args setObject:assets forKey:@"assets"];
+    
+    [self dismissViewControllerAnimated:YES completion:nil];
+    
+    [self performSelector:@selector(initThredInABackgroundThread:) withObject:args afterDelay:0.2];
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation

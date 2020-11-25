@@ -10,8 +10,9 @@
 #import "ELCAsset.h"
 #import "ELCAlbumPickerController.h"
 #import "ELCConsole.h"
+#import <Photos/Photos.h>
 
-@interface ELCAssetTablePicker ()
+@interface ELCAssetTablePicker () <PHPhotoLibraryChangeObserver>
 
 @property (nonatomic, assign) int columns;
 
@@ -45,14 +46,14 @@
     } else {
         UIBarButtonItem *doneButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(doneAction:)];
         [self.navigationItem setRightBarButtonItem:doneButtonItem];
-        [self.navigationItem setTitle:NSLocalizedString(@"Loading...", nil)];
+        //[self.navigationItem setTitle:NSLocalizedString(@"Loading...", nil)];
     }
 
-	[self performSelectorInBackground:@selector(preparePhotos) withObject:nil];
-    
     // Register for notifications when the photo library has changed
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(preparePhotos) name:ALAssetsLibraryChangedNotification object:nil];
-}
+    [[PHPhotoLibrary sharedPhotoLibrary] registerChangeObserver:self];
+    
+    [self performSelectorInBackground:@selector(preparePhotos) withObject:nil];
+    }
 
 - (void)viewWillAppear:(BOOL)animated
 {
@@ -64,7 +65,7 @@
 {
     [super viewWillDisappear:animated];
     [[ELCConsole mainConsole] removeAllIndex];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:ALAssetsLibraryChangedNotification object:nil];
+    [[PHPhotoLibrary sharedPhotoLibrary] unregisterChangeObserver:self];
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
@@ -72,10 +73,24 @@
     return YES;
 }
 
+- (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration {
+    [super willRotateToInterfaceOrientation:toInterfaceOrientation duration:duration];
+
+    NSInteger currentImagesAtEachRow = 0;
+    NSInteger futureImagesAtEachRow = 0;
+    
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) {
+        currentImagesAtEachRow = (NSInteger)(self.view.frame.size.width/78);
+        futureImagesAtEachRow = (NSInteger)((self.view.frame.size.height + self.navigationController.navigationBar.frame.size.height+20)/78);
+    } else {
+        currentImagesAtEachRow = 6;
+        futureImagesAtEachRow = 6;
+    }
+}
+
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation
 {
     [super didRotateFromInterfaceOrientation:fromInterfaceOrientation];
-    self.columns = self.view.bounds.size.width / 80;
     [self.tableView reloadData];
 }
 
@@ -84,28 +99,18 @@
     @autoreleasepool {
         
         [self.elcAssets removeAllObjects];
-        [self.assetGroup enumerateAssetsUsingBlock:^(ALAsset *result, NSUInteger index, BOOL *stop) {
-            
-            if (result == nil) {
-                return;
-            }
-            
-            ELCAsset *elcAsset = [[ELCAsset alloc] initWithAsset:result];
+        
+        PHFetchResult *tempFetchResult = (PHFetchResult *)self.assetGroup;
+        for (int k =0; k < tempFetchResult.count; k++) {
+            PHAsset *asset = tempFetchResult[k];
+            ELCAsset *elcAsset = [[ELCAsset alloc] initWithAsset:asset];
             [elcAsset setParent:self];
             
-            BOOL isAssetFiltered = NO;
-            if (self.assetPickerFilterDelegate &&
-               [self.assetPickerFilterDelegate respondsToSelector:@selector(assetTablePicker:isAssetFilteredOut:)])
-            {
-                isAssetFiltered = [self.assetPickerFilterDelegate assetTablePicker:self isAssetFilteredOut:(ELCAsset*)elcAsset];
-            }
-
-            if (!isAssetFiltered) {
+            if (elcAsset.asset != nil) {
                 [self.elcAssets addObject:elcAsset];
             }
-
-         }];
-
+        }
+        
         dispatch_sync(dispatch_get_main_queue(), ^{
             [self.tableView reloadData];
             // scroll to bottom
@@ -114,12 +119,10 @@
             if (section >= 0 && row >= 0) {
                 NSIndexPath *ip = [NSIndexPath indexPathForRow:row
                                                      inSection:section];
-                        [self.tableView scrollToRowAtIndexPath:ip
-                                              atScrollPosition:UITableViewScrollPositionBottom
-                                                      animated:NO];
+                [self.tableView scrollToRowAtIndexPath:ip
+                                      atScrollPosition:UITableViewScrollPositionBottom
+                                              animated:NO];
             }
-            
-            [self.navigationItem setTitle:self.singleSelection ? NSLocalizedString(@"Pick Photo", nil) : NSLocalizedString(@"Pick Photos", nil)];
         });
     }
 }
@@ -279,5 +282,15 @@
     return count;
 }
 
+#pragma mark - Photo Library Observer 
+
+-(void)photoLibraryDidChange:(PHChange *)changeInstance {
+    PHFetchResultChangeDetails *changeDetails = [changeInstance changeDetailsForFetchResult:(PHFetchResult*)self.assetGroup];
+    
+    if(changeDetails) {
+        self.assetGroup = [changeDetails fetchResultAfterChanges];
+        [self preparePhotos];
+    }
+}
 
 @end
