@@ -9,7 +9,6 @@
 #import <AssetsLibrary/AssetsLibrary.h>
 #import "ELCAsset.h"
 #import "ELCAssetSelectionDelegate.h"
-#import "ELCAssetPickerFilterDelegate.h"
 
 @interface ELCAssetTablePicker : UITableViewController <ELCAssetDelegate>
 
